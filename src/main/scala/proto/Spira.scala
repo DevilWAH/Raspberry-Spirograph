@@ -41,7 +41,10 @@ object Spira {
 
 import scala.scalajs.js.annotation.JSExport
 import org.scalajs.dom
+import org.scalajs.dom.raw.Window
 import org.scalajs.dom.{ImageData, html}
+
+import scala.collection.mutable
 
 @JSExport
 object Main {
@@ -49,6 +52,15 @@ object Main {
   def main(canvas: html.Canvas): Unit = {
     val ctx = canvas.getContext("2d")
       .asInstanceOf[dom.CanvasRenderingContext2D]
+
+    val queue = new mutable.Queue()
+
+    val w = scala.scalajs.js.Dynamic.global.window.asInstanceOf[Window]
+
+    val update = (d: Double) => {
+      println("==== "+d)
+    }
+    w.requestAnimationFrame(update)
 
     var count = 0
     var p = Point(0, 0)
