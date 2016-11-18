@@ -4,6 +4,9 @@ case class Point(x: Double, y: Double) {
   def +(that: Point): Point = Point(x + that.x, y + that.y)
   def *(m: Double) = Point(x * m, y * m)
 }
+object Point{
+  val origin = Point(0,0)
+}
 
 sealed trait Node {
   def render(in: Point, time: Double): Point
@@ -26,16 +29,19 @@ object Node {
 }
 
 
+
 object Spira {
-  val points = {
-    val mirrors = Mirror(2,3,Mirror(4,2,Mirror(3,5, Node.id)))
+  val mirrors = Mirror(2,3,Mirror(4,2,Mirror(3,5, Node.id)))
 
-    (1 to 1000).map{t =>
-      mirrors.render(Point(0,0),  t/50.0)
-    }
-  }
-
-  points.foreach(println)
+//  val points = {
+//
+//
+//    (1 to 1000).map{t =>
+//      mirrors.render(Point.origin,  t/50.0)
+//    }
+//  }
+//
+//  points.foreach(println)
 }
 
 
@@ -53,47 +59,65 @@ object Main {
     val ctx = canvas.getContext("2d")
       .asInstanceOf[dom.CanvasRenderingContext2D]
 
-    val queue = new mutable.Queue()
-
-    val w = scala.scalajs.js.Dynamic.global.window.asInstanceOf[Window]
-
-    val update = (d: Double) => {
-      println("==== "+d)
-    }
-    w.requestAnimationFrame(update)
-
-    var count = 0
-    var p = Point(0, 0)
-    val corners = Seq(Point(300, 300), Point(0, 300), Point(150, 0))
+    case class Timed[T](value: T, time: Double)
+    val queue = new mutable.Queue[Timed[Point]]()
+    val length = 100
 
     def clear() = {
       ctx.fillStyle = "black"
-      ctx.fillRect(0, 0, 100, 100)
+      ctx.fillRect(0, 0, 300, 300)
     }
 
-    def run() = {
-      Spira.points.foreach { pt =>
-        println(pt)
-        val p = pt * 10+ Point(100,100)
-        ctx.fillStyle = s"rgb(255, 10, 10)"
-        ctx.fillRect(p.x, p.y, 1, 1)
-      }
+    clear()
+
+    val w = scala.scalajs.js.Dynamic.global.window.asInstanceOf[Window]
+
+    val greenPixel = {
+      val id = ctx.createImageData(1,1)
+      var d = id.data
+      d(0) = 0
+      d(1) = 255
+      d(2) = 0
+      d(3) = 200
+      id
     }
 
-    println("RUN")
-    run()
-    val imgDat = ctx.getImageData(0 ,0 , 300, 300)
-    (0 until (300 * 300 * 4)).foreach{i =>
-      i % 4 match{
-        case 0 => imgDat.data(i) = 155
-        case 1 => imgDat.data(i) = 70
-        case 2 => imgDat.data(i) = 130
-        case 3 => imgDat.data(i) = 255
-      }
-      imgDat.data(i)
+    val blackPixel = {
+      val id = ctx.createImageData(1,1)
+      var d = id.data
+      d(0) = 0
+      d(1) = 0
+      d(2) = 0
+      d(3) = 255
+      id
     }
-    println("+++++++++++")
-    println(imgDat)
-    ctx.putImageData(imgDat,0.0, 0.0)
+
+    def update(): Function1[Double, Unit] = (d: Double) => {
+      render()
+      w.requestAnimationFrame(update())
+    }
+    update()(0)
+
+    def render(): Unit ={
+      def plotPt(pt: Point, erase: Boolean): Unit ={
+        val scaled = pt * 10 + Point(100, 100)
+        if(erase) ctx.fillStyle = ctx.putImageData(blackPixel, scaled.x, scaled.y)
+        else ctx.fillStyle = ctx.putImageData(greenPixel, scaled.x, scaled.y)
+      }
+
+      if(queue.size == 0) {
+        val newPt = Spira.mirrors.render(Point.origin, 0)
+        queue.enqueue(Timed(newPt, 0))
+      }
+      else if(queue.size > length){
+        val removed = queue.dequeue()
+        plotPt(removed.value, true)
+      }else{
+        val time = queue.last.time + 1
+        val newPt = Spira.mirrors.render(Point.origin, time / 30)
+        queue.enqueue(Timed(newPt, time))
+        plotPt(newPt, false)
+      }
+    }
   }
 }
