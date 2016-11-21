@@ -2,19 +2,34 @@ package proto
 
 case class Point(x: Double, y: Double) {
   def +(that: Point): Point = Point(x + that.x, y + that.y)
+  def -(that: Point): Point = Point(x -that.x, y - that.y)
   def *(m: Double) = Point(x * m, y * m)
 }
 object Point{
   val origin = Point(0,0)
 }
 
+case class BoundingBox(topLeft: Point, bottomRight: Point)
+object BoundingBox{
+  val origin: BoundingBox = BoundingBox(Point.origin, Point.origin)
+}
+
 sealed trait Node {
   def render(in: Point, time: Double): Point
+  def boundingBoxFrom(inputBounds: BoundingBox): BoundingBox
 }
 case class Mirror(radius: Double, speed: Double, child: Node) extends Node{
-  def render(in: Point, time: Double): Point = {
+  def boundingBoxFrom(inputBounds: BoundingBox): BoundingBox = {
+    val myBox = BoundingBox(
+      inputBounds.topLeft - Point(radius, radius),
+      inputBounds.bottomRight + Point(radius, radius)
+    )
+    child.boundingBoxFrom(myBox)
+  }
+
+  def render(input: Point, time: Double): Point = {
     child.render(
-      in + Point(
+      input + Point(
         radius * math.cos(speed * time),
         radius * math.sin(speed * time)
       ),
@@ -25,23 +40,16 @@ case class Mirror(radius: Double, speed: Double, child: Node) extends Node{
 object Node {
   val id = new Node {
     def render(in: Point, time: Double): Point = in
+    def boundingBoxFrom(inputBounds: BoundingBox) = inputBounds
   }
 }
 
 
 
 object Spira {
-  val mirrors = Mirror(2,3,Mirror(4,2,Mirror(3,5, Node.id)))
+  val mirrors = Mirror(5,1,Mirror(2,9.6, Node.id))
 
-//  val points = {
-//
-//
-//    (1 to 1000).map{t =>
-//      mirrors.render(Point.origin,  t/50.0)
-//    }
-//  }
-//
-//  points.foreach(println)
+  //println(mirrors.boundingBoxFrom(BoundingBox.origin))
 }
 
 
@@ -61,7 +69,7 @@ object Main {
 
     case class Timed[T](value: T, time: Double)
     val queue = new mutable.Queue[Timed[Point]]()
-    val length = 100
+    val length = 1000
 
     def clear() = {
       ctx.fillStyle = "black"
@@ -92,17 +100,15 @@ object Main {
       id
     }
 
-    def update(): Function1[Double, Unit] = (d: Double) => {
-      render()
-      w.requestAnimationFrame(update())
-    }
-    update()(0)
+    val bBox = Spira.mirrors.boundingBoxFrom(BoundingBox.origin)
 
     def render(): Unit ={
       def plotPt(pt: Point, erase: Boolean): Unit ={
-        val scaled = pt * 10 + Point(100, 100)
-        if(erase) ctx.fillStyle = ctx.putImageData(blackPixel, scaled.x, scaled.y)
-        else ctx.fillStyle = ctx.putImageData(greenPixel, scaled.x, scaled.y)
+        val scaleFactor = 300 / (2 * bBox.bottomRight.x)
+        val offset = 300 / 2
+        val scaled = pt * scaleFactor + Point(offset, offset)
+        if(erase) ctx.fillStyle = ctx.putImageData(blackPixel, scaled.x.toInt, scaled.y.toInt)
+        else ctx.fillStyle = ctx.putImageData(greenPixel, scaled.x.toInt, scaled.y.toInt)
       }
 
       if(queue.size == 0) {
@@ -114,10 +120,16 @@ object Main {
         plotPt(removed.value, true)
       }else{
         val time = queue.last.time + 1
-        val newPt = Spira.mirrors.render(Point.origin, time / 30)
+        val newPt = Spira.mirrors.render(Point.origin, time / 70)
         queue.enqueue(Timed(newPt, time))
         plotPt(newPt, false)
       }
     }
+
+    def update(): Function1[Double, Unit] = (d: Double) => {
+      render()
+      w.requestAnimationFrame(update())
+    }
+    update()(0)
   }
 }
