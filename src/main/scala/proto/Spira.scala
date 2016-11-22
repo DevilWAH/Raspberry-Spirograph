@@ -9,22 +9,14 @@ object Point{
   val origin = Point(0,0)
 }
 
-case class BoundingBox(topLeft: Point, bottomRight: Point)
-object BoundingBox{
-  val origin: BoundingBox = BoundingBox(Point.origin, Point.origin)
-}
-
 sealed trait Node {
   def render(in: Point, time: Double): Point
-  def boundingBoxFrom(inputBounds: BoundingBox): BoundingBox
+  def boundingRadius(innerBounds: Double): Double
 }
 case class Mirror(radius: Double, speed: Double, child: Node) extends Node{
-  def boundingBoxFrom(inputBounds: BoundingBox): BoundingBox = {
-    val myBox = BoundingBox(
-      inputBounds.topLeft - Point(radius, radius),
-      inputBounds.bottomRight + Point(radius, radius)
-    )
-    child.boundingBoxFrom(myBox)
+  def boundingRadius(innerBounds: Double): Double = {
+    val myBounds =  innerBounds+ radius
+    child.boundingRadius(myBounds)
   }
 
   def render(input: Point, time: Double): Point = {
@@ -40,7 +32,7 @@ case class Mirror(radius: Double, speed: Double, child: Node) extends Node{
 object Node {
   val id = new Node {
     def render(in: Point, time: Double): Point = in
-    def boundingBoxFrom(inputBounds: BoundingBox) = inputBounds
+    def boundingRadius(innerBounds: Double) = innerBounds
   }
 }
 
@@ -100,11 +92,11 @@ object Main {
       id
     }
 
-    val bBox = Spira.mirrors.boundingBoxFrom(BoundingBox.origin)
+    val boundingDiameter= 2 * Spira.mirrors.boundingRadius(0)
 
     def render(): Unit ={
       def plotPt(pt: Point, erase: Boolean): Unit ={
-        val scaleFactor = 300 / (2 * bBox.bottomRight.x)
+        val scaleFactor = 300 / boundingDiameter
         val offset = 300 / 2
         val scaled = pt * scaleFactor + Point(offset, offset)
         if(erase) ctx.fillStyle = ctx.putImageData(blackPixel, scaled.x.toInt, scaled.y.toInt)
