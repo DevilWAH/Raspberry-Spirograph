@@ -4,6 +4,9 @@ case class Point(x: Double, y: Double) {
   def +(that: Point): Point = Point(x + that.x, y + that.y)
   def -(that: Point): Point = Point(x -that.x, y - that.y)
   def *(m: Double) = Point(x * m, y * m)
+  def distToSq(that: Point) = {
+    math.pow(that.x - this.x, 2.0) + math.pow(that.y - this.y, 2.0)
+  }
 }
 object Point{
   val origin = Point(0,0)
@@ -44,12 +47,14 @@ object Spira {
   //println(mirrors.boundingBoxFrom(BoundingBox.origin))
 }
 
+case class TimePoint(time: Double, point: Point)
+
 
 import scala.scalajs.js.annotation.JSExport
 import org.scalajs.dom
-import org.scalajs.dom.raw.Window
-import org.scalajs.dom.{ImageData, html}
+import org.scalajs.dom.html
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 
 @JSExport
@@ -60,8 +65,49 @@ object Main {
       .asInstanceOf[dom.CanvasRenderingContext2D]
 
     case class Timed[T](value: T, time: Double)
-    val queue = new mutable.Queue[Timed[Point]]()
-    val length = 1000
+    val queue = new mutable.Queue[TimePoint]()
+    val scaleFactor = {
+      val boundingDiameter= 2 * Spira.mirrors.boundingRadius(0)
+      println(boundingDiameter)
+      300.0 / boundingDiameter
+    }
+    val offset = Point(300 / 2.0, 300 / 2.0)
+
+
+    def getSpiraTimePoint(time: Double): TimePoint = {
+      def screenScale(raw: Point) = raw * scaleFactor + offset
+      TimePoint(time, screenScale(Spira.mirrors.render(Point.origin, time / 70)))
+    }
+    val initPoints = IndexedSeq(
+      getSpiraTimePoint(0),
+      getSpiraTimePoint(1000)
+    )
+
+    val pixelTolSquared= math.pow(5,2)
+    @tailrec
+    def recursiveBisection(tps: IndexedSeq[TimePoint], position: Int = 0): IndexedSeq[TimePoint] = {
+      if(position == tps.size - 1)
+        tps
+      else {
+        val tp1 = tps(position)
+        val tp2 = tps(position + 1)
+        val distSq = tp1.point.distToSq(tp2.point)
+
+        if(distSq < pixelTolSquared) {
+          recursiveBisection(tps, position + 1)
+        }
+        else {
+          val midTime = (tps(position + 1).time + tps(position).time) / 2
+          val updatedTPs = {
+            val (front, back) = tps.splitAt(position + 1)
+            ( front :+getSpiraTimePoint(midTime)) ++: back
+          }
+          recursiveBisection(updatedTPs, position)
+        }
+      }
+    }
+
+    val finalPoints = recursiveBisection(initPoints)
 
     def clear() = {
       ctx.fillStyle = "black"
@@ -69,8 +115,6 @@ object Main {
     }
 
     clear()
-
-    val w = scala.scalajs.js.Dynamic.global.window.asInstanceOf[Window]
 
     val greenPixel = {
       val id = ctx.createImageData(1,1)
@@ -92,36 +136,14 @@ object Main {
       id
     }
 
-    val boundingDiameter= 2 * Spira.mirrors.boundingRadius(0)
-
     def render(): Unit ={
-      def plotPt(pt: Point, erase: Boolean): Unit ={
-        val scaleFactor = 300 / boundingDiameter
-        val offset = 300 / 2
-        val scaled = pt * scaleFactor + Point(offset, offset)
-        if(erase) ctx.fillStyle = ctx.putImageData(blackPixel, scaled.x.toInt, scaled.y.toInt)
-        else ctx.fillStyle = ctx.putImageData(greenPixel, scaled.x.toInt, scaled.y.toInt)
+      def plotPt(pt: Point): Unit ={
+        ctx.putImageData(greenPixel, pt.x.toInt, pt.y.toInt)
       }
 
-      if(queue.size == 0) {
-        val newPt = Spira.mirrors.render(Point.origin, 0)
-        queue.enqueue(Timed(newPt, 0))
-      }
-      else if(queue.size > length){
-        val removed = queue.dequeue()
-        plotPt(removed.value, true)
-      }else{
-        val time = queue.last.time + 1
-        val newPt = Spira.mirrors.render(Point.origin, time / 70)
-        queue.enqueue(Timed(newPt, time))
-        plotPt(newPt, false)
-      }
+      finalPoints.foreach(tp => plotPt(tp.point))
     }
 
-    def update(): Function1[Double, Unit] = (d: Double) => {
-      render()
-      w.requestAnimationFrame(update())
-    }
-    update()(0)
+    render()
   }
 }
